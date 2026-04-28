@@ -2,7 +2,6 @@
 
 Extension VS Code pour surveiller ta consommation Claude.ai en temps réel, directement dans la sidebar.
 
-![Claude Credit Monitor](media/claude-icon.svg)
 
 ## Fonctionnalités
 

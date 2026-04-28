@@ -7,6 +7,10 @@
     "vscode": "^1.85.0"
   },
   "categories": ["Other"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lamziiii/claude-credit-monitor-vscode"
+  },
   "activationEvents": [],
   "main": "./out/extension",
   "contributes": {

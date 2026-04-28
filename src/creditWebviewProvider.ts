@@ -263,32 +263,35 @@ export class CreditWebviewProvider implements vscode.WebviewViewProvider {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style nonce="${nonce}">
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: fit-content;
+    }
     body {
       font-family: var(--vscode-font-family);
-      font-size: 13px;
+      font-size: 11px;
       color: var(--vscode-foreground);
       background: var(--vscode-sideBar-background);
-      padding: 12px;
+      padding: 8px 8px 0 8px;
     }
 
     .state { display: none; }
     .state.active { display: block; }
 
     /* ── Setup / Erreur ── */
-    .center { text-align: center; padding: 20px 0; }
-    .muted { color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.7; }
+    .center { text-align: center; padding: 14px 0; }
+    .muted { color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 1.6; }
     .err-box {
       border: 1px solid rgba(239,68,68,0.4);
       background: rgba(239,68,68,0.08);
-      border-radius: 6px;
-      padding: 12px;
+      border-radius: 5px;
+      padding: 8px;
       text-align: center;
     }
 
-    /* ── Loading ── */
+    /* ── Premier chargement (spinner) ── */
     .spinner {
-      display: block; margin: 24px auto 8px;
-      width: 20px; height: 20px;
+      display: block; margin: 16px auto 6px;
+      width: 16px; height: 16px;
       border: 2px solid rgba(255,255,255,0.1);
       border-top-color: var(--vscode-button-background);
       border-radius: 50%;
@@ -298,10 +301,10 @@ export class CreditWebviewProvider implements vscode.WebviewViewProvider {
 
     /* ── Données ── */
     .pct-value {
-      font-size: 42px;
+      font-size: 28px;
       font-weight: 700;
       line-height: 1;
-      margin: 16px 0 6px;
+      margin: 6px 0 5px;
       text-align: center;
     }
     .pct-value.low    { color: #10b981; }
@@ -309,57 +312,61 @@ export class CreditWebviewProvider implements vscode.WebviewViewProvider {
     .pct-value.high   { color: #ef4444; }
 
     .bar-bg {
-      height: 8px;
+      height: 5px;
       background: rgba(255,255,255,0.08);
-      border-radius: 4px;
+      border-radius: 3px;
       overflow: hidden;
-      margin-bottom: 10px;
+      margin-bottom: 5px;
+      position: relative;
     }
     .bar-fill {
       height: 100%;
-      border-radius: 4px;
+      border-radius: 3px;
       transition: width 0.5s ease;
     }
+
+    /* Shimmer sur la barre pendant le refresh */
+    .bar-fill.refreshing::after {
+      content: '';
+      position: absolute;
+      top: 0; left: -60%; width: 60%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+      animation: shimmer 1s ease-in-out infinite;
+    }
+    @keyframes shimmer { to { left: 110%; } }
 
     .reset {
       text-align: center;
       color: var(--vscode-descriptionForeground);
-      font-size: 12px;
-      margin-bottom: 14px;
-    }
-
-    .updated {
-      text-align: center;
       font-size: 10px;
-      color: var(--vscode-descriptionForeground);
-      opacity: 0.6;
+      padding-bottom: 8px;
     }
 
     /* ── Bouton ── */
     button {
       font-family: var(--vscode-font-family);
-      font-size: 12px;
+      font-size: 11px;
       cursor: pointer;
       border: none;
-      border-radius: 4px;
-      padding: 5px 14px;
+      border-radius: 3px;
+      padding: 4px 10px;
       background: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
-      margin-top: 10px;
+      margin-top: 6px;
     }
     button:hover { background: var(--vscode-button-hoverBackground); }
     .btn-ghost {
       background: transparent;
       color: var(--vscode-descriptionForeground);
       border: 1px solid rgba(255,255,255,0.1);
-      margin-left: 6px;
+      margin-left: 4px;
     }
     .btn-ghost:hover { background: rgba(255,255,255,0.05); }
   </style>
 </head>
 <body>
 
-  <!-- LOADING -->
+  <!-- PREMIER CHARGEMENT -->
   <div id="s-loading" class="state active center">
     <span class="spinner"></span>
     <p class="muted">Chargement…</p>
@@ -368,7 +375,7 @@ export class CreditWebviewProvider implements vscode.WebviewViewProvider {
   <!-- NO COOKIE -->
   <div id="s-setup" class="state center">
     <p class="muted">
-      <strong style="color:var(--vscode-foreground)">Cookie de session requis</strong><br><br>
+      <strong style="color:var(--vscode-foreground)">Cookie requis</strong><br><br>
       1. Ouvre <strong>claude.ai</strong><br>
       2. F12 → Application → Cookies<br>
       3. Copie la valeur de <code>sessionKey</code>
@@ -379,7 +386,7 @@ export class CreditWebviewProvider implements vscode.WebviewViewProvider {
   <!-- ERREUR -->
   <div id="s-error" class="state">
     <div class="err-box">
-      <p class="muted" id="err-msg" style="margin-bottom:10px">Erreur</p>
+      <p class="muted" id="err-msg" style="margin-bottom:8px">Erreur</p>
       <button id="btn-update">Nouveau cookie</button>
       <button class="btn-ghost" id="btn-retry">Réessayer</button>
     </div>
@@ -396,9 +403,11 @@ export class CreditWebviewProvider implements vscode.WebviewViewProvider {
     const vscode = acquireVsCodeApi();
     const $ = id => document.getElementById(id);
 
+    let hasData = false;
+
     function show(id) {
       ['s-loading','s-setup','s-error','s-data'].forEach(s => {
-        $( s).classList.toggle('active', s === id);
+        $(s).classList.toggle('active', s === id);
       });
     }
 
@@ -419,10 +428,17 @@ export class CreditWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     window.addEventListener('message', ({ data: msg }) => {
-      if (msg.type === 'loading')   { show('s-loading'); return; }
-      if (msg.type === 'no_cookie') { show('s-setup');   return; }
+      if (msg.type === 'loading') {
+        // Premier chargement → spinner, refresh suivants → shimmer sur la barre
+        if (!hasData) { show('s-loading'); }
+        else          { $('bar').classList.add('refreshing'); }
+        return;
+      }
+
+      if (msg.type === 'no_cookie') { show('s-setup'); return; }
 
       if (msg.type === 'error') {
+        $('bar').classList.remove('refreshing');
         show('s-error');
         $('err-msg').textContent =
           msg.message === 'invalid_cookie' ? 'Cookie invalide ou expiré.' :
@@ -432,6 +448,8 @@ export class CreditWebviewProvider implements vscode.WebviewViewProvider {
       }
 
       if (msg.type === 'data') {
+        $('bar').classList.remove('refreshing');
+        hasData = true;
         show('s-data');
         const d = msg.data;
         const pct = d.bucket ? Math.round(d.bucket.utilization) : null;
@@ -448,7 +466,6 @@ export class CreditWebviewProvider implements vscode.WebviewViewProvider {
           $('pct').className = 'pct-value low';
           $('reset').textContent = 'Données non disponibles';
         }
-
       }
     });
   </script>
